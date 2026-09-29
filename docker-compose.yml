@@ -1,43 +1,60 @@
+# MySQL + phpMyAdmin (improved). Save as docker-compose.yml.
+#
+# Folder layout:
+#   docker-compose.yml
+#   .env                      <- secrets; add to .gitignore, never commit
+#
+# .env example:
+#   MYSQL_ROOT_PASSWORD=use-a-long-random-password
+#   MYSQL_USER=appuser
+#   MYSQL_PASSWORD=another-long-random-password
+#
+# Run:  docker compose up -d      (wait for "healthy" in: docker compose ps)
+# phpMyAdmin: http://localhost:4306
+
+name: mysql-stack
+
 services:
-  # Database (MySQL)
   mysql:
-    image: mysql
+    image: mysql:8.4                       # pinned LTS, not floating "latest"
     container_name: mysql
     restart: unless-stopped
-    tty: true
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"              # reachable from this PC only
     environment:
       MYSQL_DATABASE: init_db
-      MYSQL_ROOT_PASSWORD: 3000676500
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_USER: ${MYSQL_USER:-appuser}   # app account with rights on init_db only
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
     volumes:
-      - mysqldata:/var/lib/mysql/
-      - ./mysql/my.cnf:/etc/mysql/my.cnf
+      - mysqldata:/var/lib/mysql
     networks:
       - mysql-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
-  # Phpmyadmin
   phpmyadmin:
-    image: phpmyadmin
+    image: phpmyadmin:5                    # pinned major version
     container_name: phpmyadmin
     restart: unless-stopped
-    links:
-     - mysql
+    depends_on:
+      mysql:
+        condition: service_healthy         # start only once MySQL is ready
     ports:
-      - 3307:80
+      - "127.0.0.1:4306:80"                # reachable from this PC only
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
     networks:
       - mysql-network
-    environment:
-      - PMA_HOST=mysql
-      - PMA_PORT=3306
 
-# Networks
 networks:
   mysql-network:
     name: mysql-network
-    driver: bridge
 
-# Volumes
 volumes:
   mysqldata:
-    driver: local
